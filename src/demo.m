@@ -22,15 +22,21 @@ telapsed = zeros(n,1);
 accuracy = zeros(n,1);
 pred_labels = cell(n,1);
 
+source_domain_data = Data{source_domain};
+target_domain_data = Data{target_domain};
+
+source_domain_labels = Labels{source_domain};
+target_domain_labels = Labels{target_domain};
+
 for i = 1:n
     fprintf('       Iteration: %d / %d\n', i, n);
-    data.train.source = Data{source_domain}(train_ids.source{i}, :);
-    data.train.target = Data{target_domain}(train_ids.target{i}, :);
-    data.test.target = Data{target_domain}(test_ids.target{i}, :);
+    data.train.source = source_domain_data(train_ids.source{i}, :);
+    data.train.target = target_domain_data(train_ids.target{i}, :);
+    data.test.target = target_domain_data(test_ids.target{i}, :);
     
-    labels.train.source = Labels{source_domain}(train_ids.source{i});
-    labels.train.target = Labels{target_domain}(train_ids.target{i});
-    labels.test.target = Labels{target_domain}(test_ids.target{i});
+    labels.train.source = source_domain_labels(train_ids.source{i});
+    labels.train.target = target_domain_labels(train_ids.target{i});
+    labels.test.target = target_domain_labels(test_ids.target{i});
     
     if param.dim < size(data.train.source, 2)
         P = pca([data.train.source; data.train.target; data.test.target], ...
@@ -43,7 +49,8 @@ for i = 1:n
     tstart = tic;
     [model_mmdt, W] = TrainMmdt(labels.train, data.train, param);
     telapsed(i) = toc(tstart);
-       
+    
+    % model prediction
     [labels_output, score] = predict(model_mmdt, [data.test.target, ones(length(labels.test.target),1)]);
     accuracy(i) = sum(labels_output == labels.test.target') / length(labels.test.target);    
 
