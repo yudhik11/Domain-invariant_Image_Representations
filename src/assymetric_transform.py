@@ -23,22 +23,33 @@ def GetConstraints(y1, y2):
     return C
 
 def learnAsymmTransformWithSVM(XA, yA, XB, yB, params):
+    '''Returns the learned transformation matrix according to the weights and parameters defined.'''
     dA = XA.shape[1];
     dB = XB.shape[1]
     
     # Get constraints for data
     C = GetConstraints(yA,yB);
 
+    if dA != dB:
+        K0aa = formKernel(XA, XA, params);
+        K0bb = formKernel(XB, XB, params);
 
-    X = np.vstack((XA, XB))
+        C[:,1] = C[:,1] - len(yA);
+        S = AsymmetricFrob_slack_kernel2(K0aa,K0bb,C,params['gamma'],10e-3);
+        params['S'] = S;
 
-    # Get normalised data
-    K0train = formKernel(X, X, params)
+        L = np.eye(dA, dB) + np.matmul(XA.T * np.matmul(S, XB))
 
-    # Function to perform frobenius based transformation learning of parameters
-    S,_,_ = asymmetricFrob_slack_kernel(K0train,C,params['gamma'],10e-3);
+    else:
+        X = np.vstack((XA, XB))
 
-    L = np.eye(dA) + np.matmul(X.T, np.matmul(S, X));
+        # Get normalised data
+        K0train = formKernel(X, X, params)
+
+        # Function to perform frobenius based transformation learning of parameters
+        S,_,_ = asymmetricFrob_slack_kernel(K0train,C,params['gamma'],10e-3);
+
+        L = np.eye(dA) + np.matmul(X.T, np.matmul(S, X));
     return L
 
 def asymmetricFrob_slack_kernel(KA, C, gamma = None,thresh = 10e-3):
@@ -104,4 +115,55 @@ def asymmetricFrob_slack_kernel(KA, C, gamma = None,thresh = 10e-3):
         
         viol[curri] = viol[curri] + (alpha+alpha2)/gamma
         
+    return [S, slack, i]
+def AsymmetricFrob_slack_kernel2(KA,KB,C,gamma=None,thresh=None):
+    #Frobenius-based transformation learning
+    if thresh is None:
+        thresh=10e-3;
+
+    if gamma is None:
+        gamma = 1e1;
+
+    maxit = 1e6;
+    
+    [nA,nA] = KA.shape
+    [nB,nB] = KB.shape
+    S = np.zeros((nA,nB))
+    [c,t] = C.shape
+    slack = np.zeros((c,1));
+    lambda1 = np.zeros((c,1));
+    lambda2 = np.zeros((c,1));
+    viol = -1*C[:,3]*C[:,2];
+    viol = viol.T;
+
+    for i in range(maxit):
+        curri = np.argmax(viol);
+        mx = viol[curri]
+        if i%1000 == 0:
+            print('Iteration {}, maxviol {}'.format(i, mx))
+        
+        if mx < thresh:
+            break;
+    
+        p1 = C[curri,0];
+        p2 = C[curri,1];
+        b = C[curri,2];
+        s = C[curri,3];
+        kx = KA[p1-1,:];
+        ky = KB[:,p2-1];
+
+        alpha = min(lambda1[curri],(np.matmul(s,(b-np.matmul(kx, np.matmul(S,ky))-slack[curri]))) / \
+                    (1/gamma + np.matmul(KA[p1,p1],KB[p2,p2])) );
+        lambda1[curri] = lambda1[curri] - alpha;
+        S[p1,p2] = S[p1,p2] + s*alpha;
+        slack[curri] = slack[curri] - alpha/gamma;
+        alpha2 =  min(lambda2[curri],gamma*slack[curri]);
+        slack[curri] = slack[curri] - alpha2/gamma;
+        lambda2[curri] = lambda2[curri] - alpha2;
+
+#         update viols
+#         v = KA[C[:,1],p1];
+#         w = KB[p2,C[:,2].T;
+        viol = viol + np.matmul(s,  alpha *C[:,3].T * KA[C[:,0],p1].T * KB[p2,C[:,1]]);
+        viol[curri] = viol[curri] + (alpha+alpha2)/gamma;
     return [S, slack, i]
